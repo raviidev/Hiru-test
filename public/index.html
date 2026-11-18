@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>𝐐υєєη 𝐇ɪʀᴜ 𝐌ᴅ 🍒🦋 — Pair</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0f0a;
+            --surface: #111811;
+            --border: #1e2e1e;
+            --green: #00e676;
+            --green-dim: #00c853;
+            --green-glow: rgba(0, 230, 118, 0.15);
+            --green-glow-strong: rgba(0, 230, 118, 0.3);
+            --text: #e8f5e9;
+            --muted: #4a6a4a;
+            --error: #ff5252;
+            --error-glow: rgba(255, 82, 82, 0.15);
+        }
+
+        * {
+            margin: 0; padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        /* Animated grid background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(var(--border) 1px, transparent 1px),
+                linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 48px 48px;
+            opacity: 0.5;
+            z-index: 0;
+        }
+
+        /* Corner glow */
+        body::after {
+            content: '';
+            position: fixed;
+            bottom: -150px;
+            right: -150px;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, var(--green-glow) 0%, transparent 70%);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 420px;
+            padding: 24px;
+        }
+
+        /* Header */
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 36px;
+        }
+
+        .brand-icon {
+            width: 44px;
+            height: 44px;
+            background: var(--green);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px var(--green-glow-strong);
+            flex-shrink: 0;
+        }
+
+        .brand-icon svg {
+            width: 26px;
+            height: 26px;
+            fill: #0a0f0a;
+        }
+
+        .brand-text h1 {
+            font-family: 'Space Mono', monospace;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: -0.5px;
+        }
+
+        .brand-text p {
+            font-size: 0.75rem;
+            color: var(--muted);
+            margin-top: 2px;
+        }
+
+        /* Card */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--green), transparent);
+            opacity: 0.6;
+        }
+
+        .card-label {
+            font-size: 0.7rem;
+            font-family: 'Space Mono', monospace;
+            color: var(--muted);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }
+
+        /* Input group */
+        .input-group {
+            display: flex;
+            align-items: center;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            margin-bottom: 14px;
+        }
+
+        .input-group:focus-within {
+            border-color: var(--green);
+            box-shadow: 0 0 0 3px var(--green-glow);
+        }
+
+        .input-prefix {
+            padding: 0 14px;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--muted);
+            border-right: 1px solid var(--border);
+            height: 48px;
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        input[type="tel"] {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text);
+            font-family: 'Space Mono', monospace;
+            font-size: 1rem;
+            padding: 0 14px;
+            height: 48px;
+            letter-spacing: 1px;
+        }
+
+        input[type="tel"]::placeholder {
+            color: var(--muted);
+            font-family: 'DM Sans', sans-serif;
+            letter-spacing: 0;
+            font-size: 0.875rem;
+        }
+
+        /* Button */
+        .btn {
+            width: 100%;
+            height: 48px;
+            background: var(--green);
+            border: none;
+            border-radius: 10px;
+            color: #0a0f0a;
+            font-family: 'Space Mono', monospace;
+            font-weight: 700;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn:hover:not(:disabled) {
+            box-shadow: 0 0 24px var(--green-glow-strong);
+            transform: translateY(-1px);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn .btn-inner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(10,15,10,0.3);
+            border-top-color: #0a0f0a;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Result area */
+        .result {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .result.show {
+            display: block;
+            animation: fadeUp 0.4s ease;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Code display */
+        .code-box {
+            background: var(--bg);
+            border: 1px solid var(--green);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            position: relative;
+            box-shadow: 0 0 32px var(--green-glow);
+        }
+
+        .code-label {
+            font-size: 0.65rem;
+            font-family: 'Space Mono', monospace;
+            color: var(--muted);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .code-value {
+            font-family: 'Space Mono', monospace;
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--green);
+            letter-spacing: 6px;
+            text-shadow: 0 0 24px var(--green-glow-strong);
+            word-break: break-all;
+        }
+
+        .copy-btn {
+            margin-top: 14px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--muted);
+            font-family: 'Space Mono', monospace;
+            font-size: 0.7rem;
+            padding: 6px 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: 1px;
+        }
+
+        .copy-btn:hover {
+            border-color: var(--green);
+            color: var(--green);
+        }
+
+        .copy-btn.copied {
+            border-color: var(--green);
+            color: var(--green);
+        }
+
+        /* Instructions */
+        .instructions {
+            margin-top: 14px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+
+        .instructions p {
+            font-size: 0.78rem;
+            color: var(--muted);
+            line-height: 1.7;
+        }
+
+        .instructions p span {
+            color: var(--green);
+            font-family: 'Space Mono', monospace;
+        }
+
+        /* Error */
+        .error-box {
+            background: var(--error-glow);
+            border: 1px solid var(--error);
+            border-radius: 10px;
+            padding: 14px 16px;
+            font-size: 0.82rem;
+            color: var(--error);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Pulse dot */
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--green);
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+            animation: pulse 1.4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%        { opacity: 0.4; transform: scale(0.7); }
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 0.7rem;
+            color: var(--muted);
+ 
