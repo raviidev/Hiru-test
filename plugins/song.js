@@ -5,6 +5,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
+const { proto, prepareWAMessageMedia, generateWAMessageFromContent } = require('@whiskeysockets/baileys');
 
 let dxzYtmp3 = null;
 try {
@@ -57,11 +58,11 @@ function extractUrl(data) {
     );
 }
 
-// DTZ YTMP3 API + Auto Fallback (500 Error නොවී 100% වැඩ කිරීමට)
+// DTZ YTMP3 API + Auto Fallback
 async function fetchYtmp3Safe(ytUrl, quality = '128k') {
     const encoded = encodeURIComponent(ytUrl);
 
-    // 1. DTZ API (quality නැතුව - 500 error මගහැරීමට)
+    // 1. DTZ API (quality නැතුව)
     try {
         const res1 = await axios.get(`https://dtz-api-hub-v-01.vercel.app/api/download/ytmp3?url=${encoded}`, { timeout: 20000 });
         const link1 = extractUrl(res1.data);
@@ -84,7 +85,7 @@ async function fetchYtmp3Safe(ytUrl, quality = '128k') {
         } catch (e) {}
     }
 
-    // 4. Fallback API (Siputzx / DavidCyril)
+    // 4. Backup APIs
     const backups = [
         `https://api.siputzx.my.id/api/d/ytmp3?url=${encoded}`,
         `https://apis.davidcyriltech.my.id/download/ytmp3?url=${encoded}`
@@ -110,10 +111,11 @@ cmd({
     category: "Download",
     filename: __filename
 },
-async (conn, mek, m, { from, q, reply }) => {
+async (conn, mek, m, { from, q, reply, prefix }) => {
     try {
         const botName = config.BOT_NAME || '𝐐υєєη 𝐇ɪʀᴜ 𝐁ᴇᴛᴀ 🍒🦋';
         const botFooter = config.BOT_FOOTER || '> *© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ʀᴀᴠɪʏᴀ*';
+        const cmdPrefix = prefix || config.PREFIX || '.';
         const { fakeQuoted, contextInfo } = getFakeHeader(botName);
 
         if (!q) {
@@ -130,7 +132,113 @@ async (conn, mek, m, { from, q, reply }) => {
             return reply("❌ *𝗦𝗼𝗻𝗴 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱!*");
         }
 
-        let caption = `╭━━━〔 *${botName}* 〕━━━┈⊷
+        const listCaption = `╭━━━〔 *${botName}* 〕━━━┈⊷
+┃ 🎧 *𝗦𝗢𝗡𝗚 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗘𝗥*
+╰━━━━━━━━━━━━━━━┈⊷
+
+*┌────────────────────┐*
+*├ \`🎶 𝐓𝐢𝐭𝐥𝐞\` :* ${result.title}
+*├ \`⌛ 𝐃𝐮𝐫𝐚𝐭𝐢𝐨𝐧\` :* ${result.duration}
+*├ \`📎 𝐔𝐑𝐋\` :* ${result.url}
+*└────────────────────┘*
+
+_🔽 පහත ලිස්ට් බටන් එක ක්ලික් කර කැමති ෆෝමැට් එක තෝරන්න._`;
+
+        // Interactive List Button Message (single_select)
+        try {
+            const listSections = [
+                {
+                    title: "🎶 AUDIO FORMAT (MP3)",
+                    rows: [
+                        {
+                            header: "Standard Quality",
+                            title: "🎵 Audio 128kbps",
+                            description: "Download standard MP3 audio file",
+                            id: `${cmdPrefix}ytaa 128k&${result.url}`
+                        },
+                        {
+                            header: "High Quality",
+                            title: "🎧 Audio 320kbps",
+                            description: "Download high quality MP3 audio file",
+                            id: `${cmdPrefix}ytaa 320k&${result.url}`
+                        }
+                    ]
+                },
+                {
+                    title: "📂 DOCUMENT FORMAT",
+                    rows: [
+                        {
+                            header: "Standard Document",
+                            title: "📄 Document 128kbps",
+                            description: "Download MP3 as a WhatsApp document",
+                            id: `${cmdPrefix}ytad 128k&${result.url}&${result.thumbnail}&${result.title}`
+                        },
+                        {
+                            header: "High Quality Document",
+                            title: "📁 Document 320kbps",
+                            description: "Download HD MP3 as a WhatsApp document",
+                            id: `${cmdPrefix}ytad 320k&${result.url}&${result.thumbnail}&${result.title}`
+                        }
+                    ]
+                },
+                {
+                    title: "🎤 VOICE NOTE FORMAT",
+                    rows: [
+                        {
+                            header: "PTT Voice",
+                            title: "🎙️ Voice Note (PTT)",
+                            description: "Send song as a WhatsApp voice message",
+                            id: `${cmdPrefix}ytaap ${result.url}`
+                        }
+                    ]
+                }
+            ];
+
+            const interactiveMsg = generateWAMessageFromContent(from, {
+                viewOnceMessage: {
+                    message: {
+                        messageContextInfo: {
+                            deviceListMetadata: {},
+                            deviceListMetadataVersion: 2
+                        },
+                        interactiveMessage: proto.Message.InteractiveMessage.create({
+                            body: proto.Message.InteractiveMessage.Body.create({
+                                text: listCaption
+                            }),
+                            footer: proto.Message.InteractiveMessage.Footer.create({
+                                text: botFooter
+                            }),
+                            header: proto.Message.InteractiveMessage.Header.create({
+                                title: `${botName}`,
+                                subtitle: "Song Downloader",
+                                hasMediaAttachment: true,
+                                ...(await prepareWAMessageMedia(
+                                    { image: { url: result.thumbnail } },
+                                    { upload: conn.waUploadToServer }
+                                ))
+                            }),
+                            nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                                buttons: [
+                                    {
+                                        name: "single_select",
+                                        buttonParamsJson: JSON.stringify({
+                                            title: "📥 𝐒𝐄𝐋𝐄𝐂𝐓 𝐅𝐎𝐑𝐌𝐀𝐓",
+                                            sections: listSections
+                                        })
+                                    }
+                                ]
+                            }),
+                            contextInfo
+                        })
+                    }
+                }
+            }, { quoted: fakeQuoted });
+
+            await conn.relayMessage(from, interactiveMsg.message, { messageId: interactiveMsg.key.id });
+
+        } catch (listErr) {
+            // Fallback: List Button වැඩ නොකළහොත් Number Reply මෙනුව යැවීම
+            let fallbackCaption = `╭━━━〔 *${botName}* 〕━━━┈⊷
 ┃ 🎧 *𝗦𝗢𝗡𝗚 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗘𝗥*
 ╰━━━━━━━━━━━━━━━┈⊷
 
@@ -157,21 +265,22 @@ _🔢 Please reply with the corresponding number._
 
 ${botFooter}`;
 
-        const sentMsg = await conn.sendMessage(from, {
-            image: { url: result.thumbnail },
-            caption: caption,
-            contextInfo
-        }, { quoted: fakeQuoted });
+            const sentMsg = await conn.sendMessage(from, {
+                image: { url: result.thumbnail },
+                caption: fallbackCaption,
+                contextInfo
+            }, { quoted: fakeQuoted });
 
-        const msgId = sentMsg.key.id;
-        global.numberStore = global.numberStore || {};
-        global.numberStore[msgId] = {
-            "1": `ytaa 128k&${result.url}`,
-            "2": `ytaa 320k&${result.url}`,
-            "3": `ytad 128k&${result.url}&${result.thumbnail}&${result.title}`,
-            "4": `ytad 320k&${result.url}&${result.thumbnail}&${result.title}`,
-            "5": `ytaap ${result.url}`
-        };
+            const msgId = sentMsg.key.id;
+            global.numberStore = global.numberStore || {};
+            global.numberStore[msgId] = {
+                "1": `ytaa 128k&${result.url}`,
+                "2": `ytaa 320k&${result.url}`,
+                "3": `ytad 128k&${result.url}&${result.thumbnail}&${result.title}`,
+                "4": `ytad 320k&${result.url}&${result.thumbnail}&${result.title}`,
+                "5": `ytaap ${result.url}`
+            };
+        }
 
     } catch (e) {
         console.error(e);
