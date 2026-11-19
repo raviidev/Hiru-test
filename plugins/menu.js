@@ -36,7 +36,6 @@ function getFakeHeader(botName) {
     return { fakeQuoted, contextInfo };
 }
 
-// සියලුම Category සැකසුම් සහ ගැළපෙන Aliases
 const CATEGORY_CONFIG = [
     {
         key: 'main',
@@ -120,7 +119,6 @@ const CATEGORY_CONFIG = [
     }
 ];
 
-// දැනට ස්ථාපනය කර ඇති කමාන්ඩ් වලට අදාළ Category වලට පමණක් වෙන් කිරීම (Duplicate ඉවත් කර)
 function getCategorizedCommands() {
     const grouped = {};
     for (const cat of CATEGORY_CONFIG) {
@@ -138,7 +136,6 @@ function getCategorizedCommands() {
         const rawCat = (c.category || 'other').toLowerCase().trim();
         let matchedCat = CATEGORY_CONFIG.find(cat => cat.matches.includes(rawCat));
 
-        // නොගැළපෙන වෙනත් category නමක් තිබුණොත් එය 'other' යටතට දැමීම
         if (!matchedCat) {
             matchedCat = CATEGORY_CONFIG.find(cat => cat.key === 'other');
         }
@@ -147,6 +144,90 @@ function getCategorizedCommands() {
     }
 
     return grouped;
+}
+
+// List Button + Image Message යැවීමේ පොදු Helper Function එක
+async function sendInteractiveListMessage(conn, from, {
+    bodyText,
+    footerText,
+    headerTitle,
+    headerSubtitle,
+    imageUrl,
+    buttonTitle,
+    sections,
+    fakeQuoted,
+    contextInfo,
+    numberMapping = null
+}) {
+    global.numberStore = global.numberStore || {};
+
+    try {
+        const interactiveMsg = generateWAMessageFromContent(from, {
+            viewOnceMessage: {
+                message: {
+                    messageContextInfo: {
+                        deviceListMetadata: {},
+                        deviceListMetadataVersion: 2
+                    },
+                    interactiveMessage: proto.Message.InteractiveMessage.create({
+                        body: proto.Message.InteractiveMessage.Body.create({
+                            text: bodyText
+                        }),
+                        footer: proto.Message.InteractiveMessage.Footer.create({
+                            text: footerText
+                        }),
+                        header: proto.Message.InteractiveMessage.Header.create({
+                            title: headerTitle,
+                            subtitle: headerSubtitle,
+                            hasMediaAttachment: true,
+                            ...(await prepareWAMessageMedia(
+                                { image: { url: imageUrl } },
+                                { upload: conn.waUploadToServer }
+                            ))
+                        }),
+                        nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                            buttons: [
+                                {
+                                    name: "single_select",
+                                    buttonParamsJson: JSON.stringify({
+                                        title: buttonTitle,
+                                        sections: sections
+                                    })
+                                }
+                            ]
+                        }),
+                        contextInfo
+                    })
+                }
+            }
+        }, { quoted: fakeQuoted });
+
+        await conn.relayMessage(from, interactiveMsg.message, { messageId: interactiveMsg.key.id });
+        if (numberMapping) {
+            global.numberStore[interactiveMsg.key.id] = numberMapping;
+        }
+        return interactiveMsg;
+    } catch (err) {
+        // Fallback: List Button අසාර්ථක වුවහොත් පින්තූරය + Number Reply මෙනුව යැවීම
+        let imgMedia;
+        try {
+            const res = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+            imgMedia = Buffer.from(res.data);
+        } catch (e) {
+            imgMedia = { url: imageUrl };
+        }
+
+        const sentMsg = await conn.sendMessage(from, {
+            image: imgMedia,
+            caption: `${bodyText}\n\n${footerText}`,
+            contextInfo
+        }, { quoted: fakeQuoted });
+
+        if (numberMapping && sentMsg?.key?.id) {
+            global.numberStore[sentMsg.key.id] = numberMapping;
+        }
+        return sentMsg;
+    }
 }
 
 cmd({
@@ -189,8 +270,6 @@ async (conn, mek, m, { from, pushname, prefix, reply }) => {
         else if (time >= 17 && time < 20) greeting = "Good Evening 🌆";
 
         const grouped = getCategorizedCommands();
-
-        // කමාන්ඩ් තියෙන Category පමණක් පෙරා ගැනීම
         const activeCategories = CATEGORY_CONFIG.filter(cat => grouped[cat.key] && grouped[cat.key].length > 0);
         const totalCmdCount = activeCategories.reduce((sum, cat) => sum + grouped[cat.key].length, 0);
 
@@ -234,76 +313,23 @@ ${panelLines}│
 
 > _🔢 Reply with a number or select from the list button below._`;
 
-        global.numberStore = global.numberStore || {};
-
-        try {
-            const listSections = [
+        await sendInteractiveListMessage(conn, from, {
+            bodyText: menuText,
+            footerText: `> ${botFooter}`,
+            headerTitle: botName,
+            headerSubtitle: "Command Panel",
+            imageUrl: botLogo,
+            buttonTitle: "📜 𝐒𝐄𝐋𝐄𝐂𝐓 𝐂𝐀𝐓𝐄𝐆𝐎𝐑𝐘",
+            sections: [
                 {
                     title: "📂 𝐀𝐂𝐓𝐈𝐕𝐄 𝐏𝐋𝐔𝐆𝐈𝐍 𝐂𝐀𝐓𝐄𝐆𝐎𝐑𝐈𝐄𝐒",
                     rows: listRows
                 }
-            ];
-
-            const interactiveMsg = generateWAMessageFromContent(from, {
-                viewOnceMessage: {
-                    message: {
-                        messageContextInfo: {
-                            deviceListMetadata: {},
-                            deviceListMetadataVersion: 2
-                        },
-                        interactiveMessage: proto.Message.InteractiveMessage.create({
-                            body: proto.Message.InteractiveMessage.Body.create({
-                                text: menuText
-                            }),
-                            footer: proto.Message.InteractiveMessage.Footer.create({
-                                text: `> ${botFooter}`
-                            }),
-                            header: proto.Message.InteractiveMessage.Header.create({
-                                title: `${botName}`,
-                                subtitle: "Command Panel",
-                                hasMediaAttachment: true,
-                                ...(await prepareWAMessageMedia(
-                                    { image: { url: botLogo } },
-                                    { upload: conn.waUploadToServer }
-                                ))
-                            }),
-                            nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
-                                buttons: [
-                                    {
-                                        name: "single_select",
-                                        buttonParamsJson: JSON.stringify({
-                                            title: "📜 𝐒𝐄𝐋𝐄𝐂𝐓 𝐌𝐄𝐍𝐔",
-                                            sections: listSections
-                                        })
-                                    }
-                                ]
-                            }),
-                            contextInfo
-                        })
-                    }
-                }
-            }, { quoted: fakeQuoted });
-
-            await conn.relayMessage(from, interactiveMsg.message, { messageId: interactiveMsg.key.id });
-            global.numberStore[interactiveMsg.key.id] = numberStoreMapping;
-
-        } catch (listErr) {
-            let imgBuffer;
-            try {
-                const res = await axios.get(botLogo, { responseType: 'arraybuffer' });
-                imgBuffer = Buffer.from(res.data);
-            } catch (e) {
-                imgBuffer = { url: botLogo };
-            }
-
-            const sentMsg = await conn.sendMessage(from, {
-                image: imgBuffer,
-                caption: menuText,
-                contextInfo
-            }, { quoted: fakeQuoted });
-
-            global.numberStore[sentMsg.key.id] = numberStoreMapping;
-        }
+            ],
+            fakeQuoted,
+            contextInfo,
+            numberMapping: numberStoreMapping
+        });
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } }).catch(() => {});
 
@@ -327,12 +353,21 @@ const generateSubMenu = async (conn, mek, from, catKey, reply) => {
         const catCommands = grouped[catKey] || [];
 
         let cmdList = '';
+        const cmdRows = [];
+
         if (catCommands.length === 0) {
             cmdList = `│ ⊳ No active plugins in this category.\n│\n`;
         } else {
-            catCommands.forEach((c) => {
+            catCommands.forEach((c, index) => {
                 const aliasText = (c.alias && c.alias.length > 0) ? ` _(${c.alias.join(', ')})_` : '';
                 cmdList += `│ ⊳ *${prefix}${c.pattern}*${aliasText}\n│   ${c.desc || 'No description available'}\n│\n`;
+
+                cmdRows.push({
+                    header: `${(index + 1).toString().padStart(2, '0')}`,
+                    title: `${prefix}${c.pattern}`,
+                    description: c.desc || 'Execute command',
+                    id: `${prefix}${c.pattern}`
+                });
             });
         }
 
@@ -340,15 +375,38 @@ const generateSubMenu = async (conn, mek, from, catKey, reply) => {
 │
 │ ⊳ *${catConfig ? catConfig.headerTitle : '𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒'}* (${catCommands.length})
 │
-${cmdList}╰───────────────⟡
+${cmdList}╰───────────────⟡`;
 
-> ${botFooter}`;
-
-        await conn.sendMessage(from, {
-            image: { url: botLogo },
-            caption: menuContent,
-            contextInfo
-        }, { quoted: fakeQuoted });
+        if (cmdRows.length > 0) {
+            await sendInteractiveListMessage(conn, from, {
+                bodyText: menuContent,
+                footerText: `> ${botFooter}`,
+                headerTitle: botName,
+                headerSubtitle: catConfig ? catConfig.headerTitle : "Commands",
+                imageUrl: botLogo,
+                buttonTitle: "⚡ 𝐒𝐄𝐋𝐄𝐂𝐓 𝐂𝐎𝐌𝐌𝐀𝐍𝐃",
+                sections: [
+                    {
+                        title: `📌 ${catConfig ? catConfig.listTitle : 'COMMANDS'}`,
+                        rows: cmdRows
+                    },
+                    {
+                        title: "🔙 𝐍𝐀𝐕𝐈𝐆𝐀𝐓𝐈𝐎𝐍",
+                        rows: [
+                            { header: "00", title: "🏠 MAIN MENU", description: "Go back to main category panel", id: `${prefix}menu` }
+                        ]
+                    }
+                ],
+                fakeQuoted,
+                contextInfo
+            });
+        } else {
+            await conn.sendMessage(from, {
+                image: { url: botLogo },
+                caption: `${menuContent}\n\n> ${botFooter}`,
+                contextInfo
+            }, { quoted: fakeQuoted });
+        }
 
     } catch (e) {
         reply('*❌ Submenu Error !!*');
@@ -357,11 +415,12 @@ ${cmdList}╰───────────────⟡
 };
 
 cmd({ pattern: "logomenu", react: "🎨", dontAddCommandList: true, filename: __filename },
-async (conn, mek, m, { from, pushname, reply }) => {
+async (conn, mek, m, { from, pushname, prefix, reply }) => {
     try {
         const botName = config.BOT_NAME || '𝐐υєєη 𝐇ɪʀᴜ 𝐁ᴇᴛᴀ 🍒🦋';
         const botLogo = config.BOT_LOGO || 'https://i.imgur.com/3Z5rA9M.jpeg';
         const botFooter = config.BOT_FOOTER || '© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ʀᴀᴠɪʏᴀ';
+        const cmdPrefix = prefix || config.PREFIX || '.';
         const { fakeQuoted, contextInfo } = getFakeHeader(botName);
 
         let logoList = `╭─── « ${botName} » ───⟡
@@ -369,34 +428,49 @@ async (conn, mek, m, { from, pushname, reply }) => {
 │ ⊳ *𝗟𝗢𝗚𝗢 𝗠𝗔𝗞𝗘𝗥 𝗠𝗘𝗡𝗨*
 │
 `;
+        const numberMapping = {};
+        const logoRows = [];
+
         logoTypes.forEach((type, index) => {
-            let num = (index + 1).toString().padStart(2, '0');
-            logoList += `│ [ ${num} ] ${type.toUpperCase()}\n`;
+            const num = index + 1;
+            const numStr = num.toString();
+            const paddedStr = numStr.padStart(2, '0');
+
+            logoList += `│ [ ${paddedStr} ] ${type.toUpperCase()}\n`;
+
+            numberMapping[numStr] = `genlogo ${type}&${pushname}`;
+            numberMapping[paddedStr] = `genlogo ${type}&${pushname}`;
+
+            logoRows.push({
+                header: paddedStr,
+                title: `🎨 ${type.toUpperCase()} LOGO`,
+                description: `Generate ${type} style logo for ${pushname}`,
+                id: `${cmdPrefix}genlogo ${type}&${pushname}`
+            });
         });
 
         logoList += `│
 ╰───────────────⟡
 
-> _Reply with a number to generate._
-> _To set custom name: .logo <name>_
+> _Reply with a number or select from the list button._
+> _To set custom name: .logo <name>_`;
 
-> ${botFooter}`;
-
-        const sentMsg = await conn.sendMessage(from, {
-            image: { url: botLogo },
-            caption: logoList,
-            contextInfo
-        }, { quoted: fakeQuoted });
-
-        const msgId = sentMsg.key.id;
-        global.numberStore = global.numberStore || {};
-        global.numberStore[msgId] = {};
-
-        logoTypes.forEach((type, index) => {
-            const numStr = (index + 1).toString();
-            const paddedStr = numStr.padStart(2, '0');
-            global.numberStore[msgId][numStr] = `genlogo ${type}&${pushname}`;
-            global.numberStore[msgId][paddedStr] = `genlogo ${type}&${pushname}`;
+        await sendInteractiveListMessage(conn, from, {
+            bodyText: logoList,
+            footerText: `> ${botFooter}`,
+            headerTitle: botName,
+            headerSubtitle: "Logo Maker Panel",
+            imageUrl: botLogo,
+            buttonTitle: "🎨 𝐒𝐄𝐋𝐄𝐂𝐓 𝐋𝐎𝐆𝐎",
+            sections: [
+                {
+                    title: "✨ 41 𝐒𝐓𝐘𝐋𝐈𝐒𝐇 𝐋𝐎𝐆𝐎 𝐓𝐄𝐌𝐏𝐋𝐀𝐓𝐄𝐒",
+                    rows: logoRows
+                }
+            ],
+            fakeQuoted,
+            contextInfo,
+            numberMapping
         });
 
     } catch (e) {
