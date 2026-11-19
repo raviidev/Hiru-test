@@ -1,9 +1,60 @@
 const { cmd } = require('../command');
-const { ytmp3 } = require('dxz-ytdl'); 
+const config = require('../config');
 const yts = require('yt-search');
+const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
+
+// Fake Header (Verified Contact Quote + Forwarded Newsletter Header)
+function getFakeHeader(botName) {
+    const fakeQuoted = {
+        key: {
+            fromMe: false,
+            participant: '0@s.whatsapp.net',
+            remoteJid: 'status@broadcast'
+        },
+        message: {
+            contactMessage: {
+                displayName: `${botName} ✅`,
+                vcard: `BEGIN:VCARD\nVERSION:3.0\nN:;a,;;;\nFN:${botName}\nitem1.TEL;waid=0:0\nitem1.X-ABLabel:Ponsel\nEND:VCARD`
+            }
+        }
+    };
+
+    const contextInfo = {
+        forwardingScore: 999,
+        isForwarded: true,
+        forwardedNewsletterMessageInfo: {
+            newsletterJid: '120363321472746562@newsletter',
+            newsletterName: `${botName} updates`,
+            serverMessageId: 143
+        }
+    };
+
+    return { fakeQuoted, contextInfo };
+}
+
+// DTZ YTMP3 API එකෙන් Download Link එක ලබා ගැනීම
+async function fetchDtzYtmp3(ytUrl, quality = '128k') {
+    const apiUrl = `https://dtz-api-hub-v-01.vercel.app/api/download/ytmp3?url=${encodeURIComponent(ytUrl)}&quality=${quality}`;
+    const res = await axios.get(apiUrl, { timeout: 35000 });
+    const data = res.data;
+
+    const dlUrl =
+        data?.result?.downloadUrl ||
+        data?.result?.download_url ||
+        data?.result?.dl_url ||
+        data?.result?.url ||
+        data?.result?.link ||
+        data?.data?.downloadUrl ||
+        data?.data?.url ||
+        data?.downloadUrl ||
+        data?.url ||
+        (typeof data?.result === 'string' ? data.result : null);
+
+    return dlUrl;
+}
 
 cmd({
     pattern: "song",
@@ -14,27 +65,37 @@ cmd({
     category: "Download",
     filename: __filename
 },
-async(conn, mek, m, { from, q, reply }) => {
+async (conn, mek, m, { from, q, reply }) => {
     try {
-        if (!q) return await reply('🔎 *𝗣𝗹𝗲𝗮𝘀𝗲 𝗽𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘀𝗼𝗻𝗴 𝗻𝗮𝗺𝗲 𝗼𝗿 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗹𝗶𝗻𝗸!*');
+        const botName = config.BOT_NAME || '𝐐υєєη 𝐇ɪʀᴜ 𝐁ᴇᴛᴀ 🍒🦋';
+        const botFooter = config.BOT_FOOTER || '> *© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ʀᴀᴠɪʏᴀ*';
+        const { fakeQuoted, contextInfo } = getFakeHeader(botName);
+
+        if (!q) {
+            await conn.sendMessage(from, { react: { text: '⚠️', key: mek.key } }).catch(() => {});
+            return await reply('🔎 *𝗣𝗹𝗲𝗮𝘀𝗲 𝗽𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘀𝗼𝗻𝗴 𝗻𝗮𝗺𝗲 𝗼𝗿 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗹𝗶𝗻𝗸!*');
+        }
 
         const url = q.replace(/\?si=[^&]*/, '');
         const results = await yts(url);
         const result = results.videos[0];
         
-        if (!result) return reply("❌ *𝗦𝗼𝗻𝗴 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱!*");
+        if (!result) {
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
+            return reply("❌ *𝗦𝗼𝗻𝗴 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱!*");
+        }
 
-        let caption = `╭━━━〔 *𝐐υєєη 𝐇ɪʀᴜ 𝐌ᴅ 🍒🦋* 〕━━━┈⊷
-┃ 🎧 *𝗦𝗢𝗡𝗚 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗘Ｒ*
+        let caption = `╭━━━〔 *${botName}* 〕━━━┈⊷
+┃ 🎧 *𝗦𝗢𝗡𝗚 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗘𝗥*
 ╰━━━━━━━━━━━━━━━┈⊷
 
 *┌────────────────────┐*
-*├ \`🎶 𝐓𝐢𝐭λ𝐞\` :* ${result.title}
+*├ \`🎶 𝐓𝐢𝐭𝐥𝐞\` :* ${result.title}
 *├ \`⌛ 𝐃𝐮𝐫𝐚𝐭𝐢𝐨𝐧\` :* ${result.duration}
 *├ \`📎 𝐔𝐑𝐋\` :* ${result.url}
 *└────────────────────┘*
 
-╭━━━〔 *痕𝗘𝗣𝗟𝗬 𝗡𝗨𝗠𝗕𝗘𝗥* 〕━━━┈⊷
+╭━━━〔 *🔢 𝐑𝐄𝐏𝐋𝐘 𝐍𝐔𝐌𝐁𝐄𝐑* 〕━━━┈⊷
 ┃ *🎶 ᴀᴜᴅɪᴏ ғᴏʀᴍᴀᴛ*
 ┃ 1️⃣ | 128𝗄𝖻𝗉𝗌 (𝖲𝗍𝖺𝗇𝖽𝖺𝗋𝖽)
 ┃ 2️⃣ | 320𝗄𝖻𝗉𝗌 (𝖧𝗂𝗀𝗁 𝖰𝗎𝖺𝗅𝗂𝗍𝗒)
@@ -47,12 +108,15 @@ async(conn, mek, m, { from, q, reply }) => {
 ┃ 5️⃣ | 𝖵𝗈𝗂𝖼𝖾 𝖭𝗈𝗍𝖾
 ╰━━━━━━━━━━━━━━━┈⊷
 
-_🔢 Please reply with the corresponding number._`;
+_🔢 Please reply with the corresponding number._
+
+${botFooter}`;
 
         const sentMsg = await conn.sendMessage(from, {
             image: { url: result.thumbnail },
-            caption: caption
-        }, { quoted: mek });
+            caption: caption,
+            contextInfo
+        }, { quoted: fakeQuoted });
 
         const msgId = sentMsg.key.id;
         global.numberStore = global.numberStore || {};
@@ -66,6 +130,7 @@ _🔢 Please reply with the corresponding number._`;
 
     } catch (e) {
         console.error(e);
+        await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
         reply('❌ *Error finding song.*');
     }
 });
@@ -77,25 +142,32 @@ cmd({
 }, async (conn, mek, m, { from, q, reply }) => {
     if (!q) return;
     try {
-        const [quality, url] = q.split('&');
-        await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } });
+        const [quality, ...urlParts] = q.split('&');
+        const url = urlParts.join('&');
+        const botName = config.BOT_NAME || '𝐐υєєη 𝐇ɪʀᴜ 𝐁ᴇᴛᴀ 🍒🦋';
+        const { fakeQuoted, contextInfo } = getFakeHeader(botName);
 
-        const result = await ytmp3(url, quality);
-        const dlUrl = result.downloadUrl;
+        await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } }).catch(() => {});
 
-        if (!dlUrl) return await reply('❌ *𝗗𝗼𝘄𝗻𝗹𝗼𝗮𝗱 𝗹𝗶𝗻𝗸 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱.*');
+        const dlUrl = await fetchDtzYtmp3(url, quality);
+        if (!dlUrl) {
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
+            return await reply('❌ *𝗗𝗼𝘄𝗻𝗹𝗼𝗮𝗱 𝗹𝗶𝗻𝗸 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱.*');
+        }
 
-        await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } });
+        await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } }).catch(() => {});
 
         await conn.sendMessage(from, { 
             audio: { url: dlUrl }, 
             mimetype: 'audio/mpeg',
-            caption: `🎶 *𝗤𝘂𝗮𝗹𝗶𝘁𝘆:* ${quality}\n> © 𝙳𝚃𝙴𝙲 𝙼𝙸𝙽𝙸 𝚅𝟹`
-        }, { quoted: mek });
+            contextInfo
+        }, { quoted: fakeQuoted });
 
-        await conn.sendMessage(from, { react: { text: '✔️', key: mek.key } });
+        await conn.sendMessage(from, { react: { text: '✔️', key: mek.key } }).catch(() => {});
 
     } catch (e) {
+        console.error(e);
+        await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
         reply('❌ *Audio Download Failed!*');
     }
 });
@@ -108,34 +180,42 @@ cmd({
 async (conn, mek, m, { from, q, reply }) => {
     try {
         if (!q) return;
-        const [quality, url, thumb, title] = q.split("&");
+        const [quality, url, thumb, ...titleParts] = q.split("&");
+        const title = titleParts.join("&");
+        const botName = config.BOT_NAME || '𝐐υєєη 𝐇ɪʀᴜ 𝐁ᴇᴛᴀ 🍒🦋';
+        const botFooter = config.BOT_FOOTER || '> *© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ʀᴀᴠɪʏᴀ*';
+        const { fakeQuoted, contextInfo } = getFakeHeader(botName);
 
-        await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } });
+        await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } }).catch(() => {});
 
-        const result = await ytmp3(url, quality);
-        const dlUrl = result.downloadUrl;
-
-        if (!dlUrl) return await reply('❌ *𝗗𝗼𝘄𝗻𝗹𝗼𝗮𝗱 𝗹𝗶𝗻𝗸 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱.*');
+        const dlUrl = await fetchDtzYtmp3(url, quality);
+        if (!dlUrl) {
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
+            return await reply('❌ *𝗗𝗼𝘄𝗻𝗹𝗼𝗮𝗱 𝗹𝗶𝗻𝗸 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱.*');
+        }
 
         let botimgBuffer;
         try {
-            const response = await fetch(thumb);
-            botimgBuffer = Buffer.from(await response.arrayBuffer());
-        } catch (e) { console.log(e); }
+            const response = await axios.get(thumb, { responseType: 'arraybuffer' });
+            botimgBuffer = Buffer.from(response.data);
+        } catch (e) {}
 
-        await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } });
+        await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } }).catch(() => {});
 
         await conn.sendMessage(from, {
             document: { url: dlUrl },
             mimetype: 'audio/mpeg',
             fileName: `${title} (${quality}).mp3`,
             jpegThumbnail: botimgBuffer,
-            caption: `📂 *𝖰𝗎𝖺𝗅𝗂𝗍𝗒:* ${quality}\n> © 𝙳𝚃𝙴𝙲 𝙼𝙸𝙽𝙸 𝚅𝟹`
-        }, { quoted: mek });
+            caption: `📂 *𝖰𝗎𝖺𝗅𝗂𝗍𝗒:* ${quality}\n${botFooter}`,
+            contextInfo
+        }, { quoted: fakeQuoted });
 
-        await conn.sendMessage(from, { react: { text: '✔️', key: mek.key } });
+        await conn.sendMessage(from, { react: { text: '✔️', key: mek.key } }).catch(() => {});
 
     } catch (e) {
+        console.error(e);
+        await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
         reply('❌ *Document Download Failed!*');
     }
 });
@@ -148,19 +228,27 @@ cmd({
 async (conn, mek, m, { from, q, reply }) => {
     try {
         if (!q) return;
-        await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } });
+        const botName = config.BOT_NAME || '𝐐υєєη 𝐇ɪʀᴜ 𝐁ᴇᴛᴀ 🍒🦋';
+        const { fakeQuoted, contextInfo } = getFakeHeader(botName);
 
-        const result = await ytmp3(q, '128k');
-        const dlUrl = result.downloadUrl;
+        await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } }).catch(() => {});
 
-        const response = await fetch(dlUrl);
-        const buffer = Buffer.from(await response.arrayBuffer());
+        const dlUrl = await fetchDtzYtmp3(q, '128k');
+        if (!dlUrl) {
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
+            return await reply('❌ *𝗗𝗼𝘄𝗻𝗹𝗼𝗮𝗱 𝗹𝗶𝗻𝗸 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱.*');
+        }
+
+        const response = await axios.get(dlUrl, { responseType: 'arraybuffer' });
+        const buffer = Buffer.from(response.data);
 
         const ran = (Math.random() + 1).toString(36).substring(7);
         const mp3File = path.join(__dirname, `${ran}.mp3`);
         const oggFile = path.join(__dirname, `${ran}.ogg`);
 
         fs.writeFileSync(mp3File, buffer);
+
+        await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } }).catch(() => {});
 
         ffmpeg(mp3File)
             .toFormat('ogg')
@@ -169,14 +257,24 @@ async (conn, mek, m, { from, q, reply }) => {
                 await conn.sendMessage(from, {
                     audio: fs.readFileSync(oggFile),
                     mimetype: 'audio/ogg; codecs=opus',
-                    ptt: true
-                }, { quoted: mek });
-                fs.unlinkSync(mp3File);
-                fs.unlinkSync(oggFile);
+                    ptt: true,
+                    contextInfo
+                }, { quoted: fakeQuoted });
+                if (fs.existsSync(mp3File)) fs.unlinkSync(mp3File);
+                if (fs.existsSync(oggFile)) fs.unlinkSync(oggFile);
+                await conn.sendMessage(from, { react: { text: '✔️', key: mek.key } }).catch(() => {});
+            })
+            .on('error', async () => {
+                if (fs.existsSync(mp3File)) fs.unlinkSync(mp3File);
+                if (fs.existsSync(oggFile)) fs.unlinkSync(oggFile);
+                await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
+                reply('❌ *Voice Conversion Failed!*');
             })
             .save(oggFile);
 
     } catch (e) {
+        console.error(e);
+        await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
         reply('❌ *Voice Conversion Failed!*');
     }
 });
