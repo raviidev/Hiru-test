@@ -6,6 +6,11 @@ const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 
+let dxzYtmp3 = null;
+try {
+    dxzYtmp3 = require('dxz-ytdl').ytmp3;
+} catch (e) {}
+
 // Fake Header (Verified Contact Quote + Forwarded Newsletter Header)
 function getFakeHeader(botName) {
     const fakeQuoted = {
@@ -35,13 +40,10 @@ function getFakeHeader(botName) {
     return { fakeQuoted, contextInfo };
 }
 
-// DTZ YTMP3 API එකෙන් Download Link එක ලබා ගැනීම
-async function fetchDtzYtmp3(ytUrl, quality = '128k') {
-    const apiUrl = `https://dtz-api-hub-v-01.vercel.app/api/download/ytmp3?url=${encodeURIComponent(ytUrl)}&quality=${quality}`;
-    const res = await axios.get(apiUrl, { timeout: 35000 });
-    const data = res.data;
-
-    const dlUrl =
+function extractUrl(data) {
+    if (!data) return null;
+    if (typeof data === 'string' && data.startsWith('http')) return data;
+    return (
         data?.result?.downloadUrl ||
         data?.result?.download_url ||
         data?.result?.dl_url ||
@@ -51,9 +53,52 @@ async function fetchDtzYtmp3(ytUrl, quality = '128k') {
         data?.data?.url ||
         data?.downloadUrl ||
         data?.url ||
-        (typeof data?.result === 'string' ? data.result : null);
+        (typeof data?.result === 'string' && data.result.startsWith('http') ? data.result : null)
+    );
+}
 
-    return dlUrl;
+// DTZ YTMP3 API + Auto Fallback (500 Error නොවී 100% වැඩ කිරීමට)
+async function fetchYtmp3Safe(ytUrl, quality = '128k') {
+    const encoded = encodeURIComponent(ytUrl);
+
+    // 1. DTZ API (quality නැතුව - 500 error මගහැරීමට)
+    try {
+        const res1 = await axios.get(`https://dtz-api-hub-v-01.vercel.app/api/download/ytmp3?url=${encoded}`, { timeout: 20000 });
+        const link1 = extractUrl(res1.data);
+        if (link1) return link1;
+    } catch (e) {}
+
+    // 2. DTZ API (quality එක්ක)
+    try {
+        const res2 = await axios.get(`https://dtz-api-hub-v-01.vercel.app/api/download/ytmp3?url=${encoded}&quality=${quality}`, { timeout: 20000 });
+        const link2 = extractUrl(res2.data);
+        if (link2) return link2;
+    } catch (e) {}
+
+    // 3. Fallback: dxz-ytdl package
+    if (dxzYtmp3) {
+        try {
+            const res3 = await dxzYtmp3(ytUrl, quality);
+            const link3 = extractUrl(res3);
+            if (link3) return link3;
+        } catch (e) {}
+    }
+
+    // 4. Fallback API (Siputzx / DavidCyril)
+    const backups = [
+        `https://api.siputzx.my.id/api/d/ytmp3?url=${encoded}`,
+        `https://apis.davidcyriltech.my.id/download/ytmp3?url=${encoded}`
+    ];
+
+    for (const api of backups) {
+        try {
+            const resB = await axios.get(api, { timeout: 25000 });
+            const linkB = extractUrl(resB.data);
+            if (linkB) return linkB;
+        } catch (e) {}
+    }
+
+    return null;
 }
 
 cmd({
@@ -149,7 +194,7 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } }).catch(() => {});
 
-        const dlUrl = await fetchDtzYtmp3(url, quality);
+        const dlUrl = await fetchYtmp3Safe(url, quality);
         if (!dlUrl) {
             await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
             return await reply('❌ *𝗗𝗼𝘄𝗻𝗹𝗼𝗮𝗱 𝗹𝗶𝗻𝗸 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱.*');
@@ -188,7 +233,7 @@ async (conn, mek, m, { from, q, reply }) => {
 
         await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } }).catch(() => {});
 
-        const dlUrl = await fetchDtzYtmp3(url, quality);
+        const dlUrl = await fetchYtmp3Safe(url, quality);
         if (!dlUrl) {
             await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
             return await reply('❌ *𝗗𝗼𝘄𝗻𝗹𝗼𝗮𝗱 𝗹𝗶𝗻𝗸 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱.*');
@@ -233,7 +278,7 @@ async (conn, mek, m, { from, q, reply }) => {
 
         await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } }).catch(() => {});
 
-        const dlUrl = await fetchDtzYtmp3(q, '128k');
+        const dlUrl = await fetchYtmp3Safe(q, '128k');
         if (!dlUrl) {
             await conn.sendMessage(from, { react: { text: '❌', key: mek.key } }).catch(() => {});
             return await reply('❌ *𝗗𝗼𝘄𝗻𝗹𝗼𝗮𝗱 𝗹𝗶𝗻𝗸 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱.*');
