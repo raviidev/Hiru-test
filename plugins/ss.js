@@ -1,6 +1,7 @@
 const { cmd } = require('../command');
 const config = require('../config');
 const axios = require('axios');
+const Jimp = require('jimp');
 
 cmd({
     pattern: "ssweb",
@@ -134,17 +135,27 @@ async (conn, mek, m, { from, q, reply }) => {
 
         const apiUrl = `https://api-nomo.zone.id/api/ssweb?url=${encodeURIComponent(url)}&width=${width}&height=${height}&full_page=${fullPage}`;
 
-        // API එකෙන් Image Buffer එක ලබා ගැනීම (හෝ direct URL fallback)
-        let imageBuffer;
-        try {
-            const response = await axios.get(apiUrl, {
-                responseType: 'arraybuffer',
-                timeout: 30000
-            });
-            imageBuffer = Buffer.from(response.data);
-        } catch (apiErr) {
-            imageBuffer = null;
+        const response = await axios.get(apiUrl, {
+            responseType: 'arraybuffer',
+            timeout: 45000
+        });
+
+        let rawBuffer = Buffer.from(response.data);
+
+        // JSON response එකක් නම් ඇතුළේ ඇති image link එක ගැනීම
+        const contentType = response.headers['content-type'] || '';
+        if (contentType.includes('application/json') || rawBuffer.toString('utf8', 0, 1) === '{') {
+            const json = JSON.parse(rawBuffer.toString('utf8'));
+            const imgUrl = json.url || json.result || json.image || json.data?.url || json.data;
+            if (imgUrl && typeof imgUrl === 'string' && imgUrl.startsWith('http')) {
+                const imgRes = await axios.get(imgUrl, { responseType: 'arraybuffer', timeout: 30000 });
+                rawBuffer = Buffer.from(imgRes.data);
+            }
         }
+
+        // Jimp මඟින් සැබෑ JPEG/PNG Buffer එකක් බවට පත් කිරීම (WhatsApp හිස් කොටුවක් වීම වැළැක්වීමට)
+        const jimpImg = await Jimp.read(rawBuffer);
+        const finalImageBuffer = await jimpImg.getBufferAsync(Jimp.MIME_JPEG);
 
         let caption = `╭━━━〔 *📸 𝐒𝐂𝐑𝐄𝐄𝐍𝐒𝐇𝐎𝐓 𝐑𝐄𝐀𝐃𝐘* 〕━━━┈⊷
 ┃ ✅ *Captured Successfully!*
@@ -159,7 +170,8 @@ async (conn, mek, m, { from, q, reply }) => {
 ${botFooter}`;
 
         await conn.sendMessage(from, {
-            image: imageBuffer ? imageBuffer : { url: apiUrl },
+            image: finalImageBuffer,
+            mimetype: 'image/jpeg',
             caption: caption,
             contextInfo: {
                 forwardingScore: 999,
