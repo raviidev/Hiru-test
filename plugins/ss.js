@@ -4,7 +4,7 @@ const axios = require('axios');
 
 // ලැබෙන Buffer එක සැබෑ Image (PNG / JPEG / WEBP) එකක්දැයි පරීක්ෂා කිරීම
 function isValidImage(buf) {
-    if (!Buffer.isBuffer(buf) || buf.length < 500) return false;
+    if (!Buffer.isBuffer(buf) || buf.length < 300) return false;
     if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return true; // PNG
     if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return true; // JPEG
     if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
@@ -12,34 +12,44 @@ function isValidImage(buf) {
     return false;
 }
 
-// API එකකින් පින්තූරය නිවැරදිව Download කරගැනීම (Direct Buffer හෝ JSON URL/Base64)
-async function getImageFromApi(apiUrl) {
+// api-nomo.zone.id API එකෙන් පින්තූරය නිවැරදිව Download කරගැනීම
+async function getNomoScreenshot(apiUrl) {
     try {
         const res = await axios.get(apiUrl, {
             responseType: 'arraybuffer',
             timeout: 45000,
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept': 'image/avif,image/webp,image/apng,image/*,application/json,*/*;q=0.8'
             }
         });
 
         const buf = Buffer.from(res.data);
+
+        // 1. කෙළින්ම Image Buffer එකක් ලැබුණහොත්
         if (isValidImage(buf)) return buf;
 
-        // JSON response එකක් ලැබුණහොත් එහි ඇති image link හෝ base64 ලබා ගැනීම
+        // 2. JSON එකක් ඇතුළේ Image URL එකක් හෝ Base64 එකක් ලැබුණහොත්
         const text = buf.toString('utf-8').trim();
-        const json = JSON.parse(text);
+        let json;
+        try {
+            json = JSON.parse(text);
+        } catch (e) {
+            return null;
+        }
+
         const imgData =
             json?.result?.url ||
             json?.result?.image ||
+            json?.result?.screenshot ||
             json?.data?.url ||
             json?.data?.image ||
             json?.data?.screenshot ||
             (typeof json?.result === 'string' ? json.result : null) ||
             (typeof json?.url === 'string' ? json.url : null) ||
             (typeof json?.image === 'string' ? json.image : null) ||
-            (typeof json?.screenshot === 'string' ? json.screenshot : null);
+            (typeof json?.screenshot === 'string' ? json.screenshot : null) ||
+            (typeof json?.data === 'string' ? json.data : null);
 
         if (!imgData) return null;
 
@@ -115,7 +125,10 @@ async (conn, mek, m, { from, q, reply, pushname }) => {
 *© ${botFooter}*`);
         }
 
-        let targetUrl = q.startsWith("http") ? q : "https://" + q;
+        let targetUrl = q.trim();
+        if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+            targetUrl = "https://" + targetUrl;
+        }
 
         let menuTxt = `╭━━━〔 ${botName} 〕━━━┈⊷
 ┃ 📸 𝐖𝐄𝐁 𝐒𝐂𝐑𝐄𝐄𝐍𝐒𝐇𝐎𝐓
@@ -141,11 +154,11 @@ async (conn, mek, m, { from, q, reply, pushname }) => {
         const msgId = sentMsg.key.id;
         global.numberStore = global.numberStore || {};
         global.numberStore[msgId] = {
-            "1": `ssdl 1920&1080&true&PC (Full Page)&${targetUrl}`,
-            "2": `ssdl 1920&1080&false&PC (Viewport)&${targetUrl}`,
-            "3": `ssdl 375&812&true&Mobile (Full Page)&${targetUrl}`,
-            "4": `ssdl 375&812&false&Mobile (Viewport)&${targetUrl}`,
-            "5": `ssdl 768&1024&true&Tablet (Full Page)&${targetUrl}`
+            "1": `ssdl 1920&1080&true&desktop&PC (Full Page)&${targetUrl}`,
+            "2": `ssdl 1920&1080&false&desktop&PC (Viewport)&${targetUrl}`,
+            "3": `ssdl 375&812&true&mobile&Mobile (Full Page)&${targetUrl}`,
+            "4": `ssdl 375&812&false&mobile&Mobile (Viewport)&${targetUrl}`,
+            "5": `ssdl 768&1024&true&tablet&Tablet (Full Page)&${targetUrl}`
         };
 
     } catch (e) {
@@ -163,7 +176,9 @@ async (conn, mek, m, { from, q, reply }) => {
     try {
         if (!q) return;
 
-        const [width, height, fullPage, device, url] = q.split('&');
+        const [width, height, fullPage, type, device, ...urlParts] = q.split('&');
+        const url = urlParts.join('&'); // URL එක තුළ '&' අකුරු තිබුණත් නොකැඩී සම්පූර්ණ URL එක ලබා ගැනීමට
+
         const botName = config.BOT_NAME || '𝐐υєєη 𝐇ɪʀᴜ 𝐁ᴇᴛᴀ 🍒🦋';
         const botFooter = config.BOT_FOOTER || 'Develop By Raviya';
         const { fakeQuoted, contextInfo } = getFakeHeader(botName);
@@ -184,12 +199,18 @@ async (conn, mek, m, { from, q, reply }) => {
             contextInfo
         }, { quoted: fakeQuoted });
 
-        // 1. පළමුව api-nomo.zone.id API එකෙන් උත්සාහ කිරීම
-        let imageBuffer = await getImageFromApi(`https://api-nomo.zone.id/api/ssweb?url=${encodeURIComponent(url)}`);
+        const encodedUrl = encodeURIComponent(url);
 
-        // 2. එය අසාර්ථක නම් movanest API එකෙන් නිවැරදි size සමඟ ලබා ගැනීම (100% Backup)
+        // 1. api-nomo.zone.id වෙත size සහ type parameters සමඟ උත්සාහ කිරීම
+        let imageBuffer = await getNomoScreenshot(
+            `https://api-nomo.zone.id/api/ssweb?url=${encodedUrl}&width=${width}&height=${height}&full_page=${fullPage}&type=${type}`
+        );
+
+        // 2. Parameters නොමැතිව කෙළින්ම https://api-nomo.zone.id/api/ssweb?url=... මඟින් ලබා ගැනීම
         if (!imageBuffer) {
-            imageBuffer = await getImageFromApi(`https://www.movanest.xyz/v2/ssweb?url=${encodeURIComponent(url)}&width=${width}&height=${height}&full_page=${fullPage}`);
+            imageBuffer = await getNomoScreenshot(
+                `https://api-nomo.zone.id/api/ssweb?url=${encodedUrl}`
+            );
         }
 
         if (!imageBuffer) {
@@ -222,7 +243,7 @@ async (conn, mek, m, { from, q, reply }) => {
             edit: statusMsg.key
         }).catch(() => {});
 
-        // පින්තූරය Fake Header සමඟ පමණක් යැවීම
+        // api-nomo.zone.id වෙතින් ලැබුණු සැබෑ පින්තූරය Fake Header සමඟ යැවීම
         await conn.sendMessage(from, {
             image: imageBuffer,
             mimetype: 'image/png',
